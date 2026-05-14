@@ -10,13 +10,14 @@ namespace VisionProAttentionGuide
 
         [Header("Optional Character References")]
         [SerializeField] private Animator animator;
+        [SerializeField] private bool autoBindAvatarBones = true;
 
         [Header("Look Settings")]
         [SerializeField] private float headTurnSpeed = 4f;
         [SerializeField] private float armTurnSpeed = 5f;
 
         [Header("Visual Debug")]
-        [SerializeField] private bool showHeadDirectionIndicator = true;
+        [SerializeField] private bool showHeadDirectionIndicator;
         [SerializeField] private Transform headDirectionIndicator;
 
         [Header("Debug")]
@@ -34,23 +35,26 @@ namespace VisionProAttentionGuide
             head = headTransform;
             pointingArm = pointingArmTransform;
             animator = characterAnimator;
+            AutoBindMissingAvatarReferences();
             EnsureHeadDirectionIndicator();
+            CacheInitialRotations();
+        }
 
-            if (head != null)
-            {
-                initialHeadRotation = head.rotation;
-            }
-
-            if (pointingArm != null)
-            {
-                initialArmRotation = pointingArm.rotation;
-            }
+        public void SetHeadDirectionIndicatorVisible(bool isVisible)
+        {
+            showHeadDirectionIndicator = isVisible;
+            EnsureHeadDirectionIndicator();
         }
 
         private void Awake()
         {
+            AutoBindMissingAvatarReferences();
             EnsureHeadDirectionIndicator();
+            CacheInitialRotations();
+        }
 
+        private void CacheInitialRotations()
+        {
             if (head != null)
             {
                 initialHeadRotation = head.rotation;
@@ -146,6 +150,12 @@ namespace VisionProAttentionGuide
 
         private void EnsureHeadDirectionIndicator()
         {
+            if (!showHeadDirectionIndicator && headDirectionIndicator != null)
+            {
+                headDirectionIndicator.gameObject.SetActive(false);
+                return;
+            }
+
             if (!showHeadDirectionIndicator || head == null || headDirectionIndicator != null)
             {
                 return;
@@ -179,6 +189,64 @@ namespace VisionProAttentionGuide
             }
 
             headDirectionIndicator = indicator.transform;
+        }
+
+        private void AutoBindMissingAvatarReferences()
+        {
+            if (!autoBindAvatarBones)
+            {
+                return;
+            }
+
+            if (animator == null)
+            {
+                animator = GetComponentInChildren<Animator>();
+            }
+
+            if (animator != null && animator.isHuman)
+            {
+                if (head == null)
+                {
+                    head = animator.GetBoneTransform(HumanBodyBones.Head);
+                }
+
+                if (pointingArm == null)
+                {
+                    pointingArm = animator.GetBoneTransform(HumanBodyBones.RightUpperArm);
+                }
+            }
+
+            if (head == null)
+            {
+                head = FindDescendantByName("head");
+            }
+
+            if (pointingArm == null)
+            {
+                pointingArm = FindDescendantByName("rightarm")
+                    ?? FindDescendantByName("right_arm")
+                    ?? FindDescendantByName("rightupperarm")
+                    ?? FindDescendantByName("mixamorig:rightarm")
+                    ?? FindDescendantByName("mixamorig:rightforearm");
+            }
+        }
+
+        private Transform FindDescendantByName(string expectedName)
+        {
+            Transform[] descendants = GetComponentsInChildren<Transform>(true);
+
+            foreach (Transform descendant in descendants)
+            {
+                string normalizedName = descendant.name.Replace(" ", string.Empty).Replace("_", string.Empty);
+                string normalizedExpectedName = expectedName.Replace(" ", string.Empty).Replace("_", string.Empty);
+
+                if (normalizedName.IndexOf(normalizedExpectedName, System.StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    return descendant;
+                }
+            }
+
+            return null;
         }
 
         private void SetPointingAnimation(bool isPointing)

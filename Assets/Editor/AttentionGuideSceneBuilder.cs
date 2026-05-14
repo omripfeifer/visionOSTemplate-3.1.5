@@ -13,6 +13,8 @@ namespace VisionProAttentionGuide.Editor
     {
         private const string ScenePath = "Assets/Scenes/AttentionGuideMVP.unity";
         private const string MaterialsFolder = "Assets/Materials";
+        private const string AvatarAssetPath = "Assets/Avatar/Megan.fbx";
+        private const float AvatarTargetHeight = 1.75f;
 
         [MenuItem("Vision Pro Assignment/Create Attention Guide MVP Scene")]
         public static void CreateAttentionGuideScene()
@@ -131,6 +133,30 @@ namespace VisionProAttentionGuide.Editor
             Debug.Log("Added AttentionStatusDisplay to the current scene.");
         }
 
+        [MenuItem("Vision Pro Assignment/Replace Virtual Person With Mixamo Avatar")]
+        public static void ReplaceVirtualPersonWithMixamoAvatar()
+        {
+            VirtualPersonGuide guide = CreateMixamoAvatarPerson();
+
+            if (guide == null)
+            {
+                Debug.LogError($"Could not load avatar at {AvatarAssetPath}. Put the Mixamo FBX there and let Unity import it first.");
+                return;
+            }
+
+            AttentionGuidanceManager manager = Object.FindFirstObjectByType<AttentionGuidanceManager>();
+            Transform target = GameObject.Find("TargetObject")?.transform;
+            Camera camera = Camera.main;
+
+            if (manager != null && target != null && camera != null)
+            {
+                manager.Configure(camera.transform, target, guide);
+            }
+
+            EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
+            Debug.Log($"Replaced primitive virtual person with {AvatarAssetPath}.");
+        }
+
         private static Camera CreateMainCamera()
         {
             GameObject cameraObject = new GameObject("Main Camera");
@@ -190,6 +216,13 @@ namespace VisionProAttentionGuide.Editor
 
         private static VirtualPersonGuide CreateVirtualPerson(Material bodyMaterial, Material headMaterial, Material armMaterial)
         {
+            VirtualPersonGuide avatarGuide = CreateMixamoAvatarPerson();
+
+            if (avatarGuide != null)
+            {
+                return avatarGuide;
+            }
+
             GameObject person = new GameObject("VirtualPerson");
             person.transform.position = new Vector3(-1.75f, 0f, 9.7f);
             person.transform.rotation = Quaternion.Euler(0f, 12f, 0f);
@@ -216,8 +249,70 @@ namespace VisionProAttentionGuide.Editor
 
             VirtualPersonGuide guide = person.AddComponent<VirtualPersonGuide>();
             guide.Configure(head.transform, rightArm.transform);
+            guide.SetHeadDirectionIndicatorVisible(true);
 
             return guide;
+        }
+
+        private static VirtualPersonGuide CreateMixamoAvatarPerson()
+        {
+            GameObject avatarAsset = AssetDatabase.LoadAssetAtPath<GameObject>(AvatarAssetPath);
+
+            if (avatarAsset == null)
+            {
+                return null;
+            }
+
+            GameObject existingPerson = GameObject.Find("VirtualPerson");
+
+            if (existingPerson != null)
+            {
+                Object.DestroyImmediate(existingPerson);
+            }
+
+            GameObject person = PrefabUtility.InstantiatePrefab(avatarAsset) as GameObject;
+
+            if (person == null)
+            {
+                person = Object.Instantiate(avatarAsset);
+            }
+
+            person.name = "VirtualPerson";
+            person.transform.position = new Vector3(-1.75f, 0f, 9.7f);
+            person.transform.rotation = Quaternion.Euler(0f, 12f, 0f);
+            NormalizeAvatarHeight(person);
+
+            Animator animator = person.GetComponentInChildren<Animator>();
+            VirtualPersonGuide guide = person.GetComponent<VirtualPersonGuide>() ?? person.AddComponent<VirtualPersonGuide>();
+            guide.Configure(null, null, animator);
+            guide.SetHeadDirectionIndicatorVisible(false);
+
+            return guide;
+        }
+
+        private static void NormalizeAvatarHeight(GameObject avatar)
+        {
+            Renderer[] renderers = avatar.GetComponentsInChildren<Renderer>();
+
+            if (renderers.Length == 0)
+            {
+                return;
+            }
+
+            Bounds bounds = renderers[0].bounds;
+
+            for (int i = 1; i < renderers.Length; i++)
+            {
+                bounds.Encapsulate(renderers[i].bounds);
+            }
+
+            if (bounds.size.y <= 0.001f)
+            {
+                return;
+            }
+
+            float scaleMultiplier = AvatarTargetHeight / bounds.size.y;
+            avatar.transform.localScale *= scaleMultiplier;
         }
 
         private static GameObject CreateArm(string name, Vector3 localPosition, Quaternion localRotation, Material material)
